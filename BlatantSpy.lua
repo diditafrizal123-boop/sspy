@@ -145,9 +145,8 @@ end
 Globals.BlatantSpyLoaded = true
 
 local RequiredFunctions = {
-    "hookmetamethod", "newcclosure", "getgc", "getnilinstances",
-    "getcallingscript", "cloneref", "getnamecallmethod", "checkcaller",
-    "setclipboard", "clonefunction"
+    "hookmetamethod", "newcclosure", "cloneref", "getnamecallmethod",
+    "checkcaller", "clonefunction"
 }
 
 local MissingFunctions = {}
@@ -162,7 +161,7 @@ for _, funcName in ipairs(RequiredFunctions) do
             found = true
         end
     end
-    if not found and funcName ~= "getnilinstances" then
+    if not found then
         ClonedFunctions.tableInsert(MissingFunctions, funcName)
     end
 end
@@ -2640,17 +2639,25 @@ function UI:OpenDetailWindow(entry)
         })
         
         self:CreateDetailButton("COPY SCRIPT", btnFrame, function()
-            pcall(function()
-                setclipboard(entry:GetScript())
-            end)
-            self:ShowNotification("Script copied", Theme.Success)
+            if setclipboard then
+                pcall(function()
+                    setclipboard(entry:GetScript())
+                end)
+                self:ShowNotification("Script copied", Theme.Success)
+            else
+                self:ShowNotification("Clipboard not available", Theme.Warning)
+            end
         end)
         
         self:CreateDetailButton("COPY INFO", btnFrame, function()
-            pcall(function()
-                setclipboard(entry:GetDetailedInfoPlain())
-            end)
-            self:ShowNotification("Info copied", Theme.Success)
+            if setclipboard then
+                pcall(function()
+                    setclipboard(entry:GetDetailedInfoPlain())
+                end)
+                self:ShowNotification("Info copied", Theme.Success)
+            else
+                self:ShowNotification("Clipboard not available", Theme.Warning)
+            end
         end)
         
         if entry:CanDecompile() then
@@ -2895,10 +2902,14 @@ function UI:OpenDecompileWindow(entry)
         Utils.Corner(copyBtn, Theme.CornerSmall)
         pcall(function()
             copyBtn.MouseButton1Click:Connect(function()
-                pcall(function()
-                    setclipboard(decompiled)
-                end)
-                self:ShowNotification("Decompiled script copied", Theme.Success)
+                if setclipboard then
+                    pcall(function()
+                        setclipboard(decompiled)
+                    end)
+                    self:ShowNotification("Decompiled script copied", Theme.Success)
+                else
+                    self:ShowNotification("Clipboard not available", Theme.Warning)
+                end
             end)
         end)
     end
