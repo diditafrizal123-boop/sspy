@@ -81,6 +81,9 @@ local Globals = getgenv()
 
 local AdonisBypassed = false
 local ActorInterceptionEnabled = false
+local Config = {
+    ExternalDecompilerEnabled = true
+}
 
 local CacheAPI = {}
 
@@ -1465,6 +1468,41 @@ function Decompiler.new()
     return setmetatable({}, Decompiler)
 end
 
+function Decompiler:TryExternal(scriptInstance)
+    if not Config.ExternalDecompilerEnabled then
+        return nil, nil
+    end
+
+    if type(getgenv().BlatantSpyExternalDecompiler) == "function" then
+        local success, result = pcall(getgenv().BlatantSpyExternalDecompiler, scriptInstance)
+        if success and type(result) == "string" then
+            return result, "External"
+        end
+    end
+
+    if getscriptbytecode then
+        local success, bytecode = pcall(getscriptbytecode, scriptInstance)
+        if success and bytecode then
+            if type(getgenv().unluau_decompile) == "function" then
+                local decompSuccess, decompResult = pcall(getgenv().unluau_decompile, bytecode)
+                if decompSuccess and type(decompResult) == "string" then
+                    return decompResult, "Unluau"
+                end
+            end
+
+            local unluau = getgenv().unluau
+            if type(unluau) == "table" and type(unluau.decompile) == "function" then
+                local decompSuccess, decompResult = pcall(unluau.decompile, bytecode)
+                if decompSuccess and type(decompResult) == "string" then
+                    return decompResult, "Unluau"
+                end
+            end
+        end
+    end
+
+    return nil, nil
+end
+
 function Decompiler:Process(scriptInstance)
     if not scriptInstance then
         return "No script instance provided"
@@ -1476,8 +1514,13 @@ function Decompiler:Process(scriptInstance)
     if decompile then
         local success, source = pcall(decompile, scriptInstance)
         if success and source then
-            return result .. source
+            return result .. "-- Decompiler: Native\n\n" .. source
         end
+    end
+
+    local externalSource, externalName = self:TryExternal(scriptInstance)
+    if externalSource then
+        return result .. "-- Decompiler: " .. externalName .. "\n\n" .. externalSource
     end
     
     if getscriptbytecode then
@@ -1486,7 +1529,7 @@ function Decompiler:Process(scriptInstance)
             if disassemble then
                 local disSuccess, disResult = pcall(disassemble, bytecode)
                 if disSuccess then
-                    return result .. "-- Disassembled bytecode:\n\n" .. disResult
+                    return result .. "-- Decompiler: Disassemble\n\n-- Disassembled bytecode:\n\n" .. disResult
                 end
             end
             return result .. "-- Bytecode retrieved but decompilation unavailable"
