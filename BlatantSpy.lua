@@ -145,9 +145,8 @@ end
 Globals.BlatantSpyLoaded = true
 
 local RequiredFunctions = {
-    "hookmetamethod", "newcclosure", "getgc", "getnilinstances",
-    "getcallingscript", "cloneref", "getnamecallmethod", "checkcaller",
-    "setclipboard", "clonefunction"
+    "hookmetamethod", "newcclosure", "cloneref", "getnamecallmethod",
+    "checkcaller", "clonefunction"
 }
 
 local MissingFunctions = {}
@@ -162,7 +161,7 @@ for _, funcName in ipairs(RequiredFunctions) do
             found = true
         end
     end
-    if not found and funcName ~= "getnilinstances" then
+    if not found then
         ClonedFunctions.tableInsert(MissingFunctions, funcName)
     end
 end
@@ -274,7 +273,7 @@ local Services = {}
 do
     local serviceNames = {
         "Players", "TweenService", "UserInputService", 
-        "RunService", "HttpService", "CoreGui", "ReplicatedStorage"
+        "RunService", "HttpService", "CoreGui", "ReplicatedStorage", "Workspace"
     }
     for _, name in ipairs(serviceNames) do
         local success, service = pcall(function()
@@ -1517,9 +1516,15 @@ function UI.new(logger, blockList, decompiler)
     self.SelectedGroup = nil
     self.SubWindows = {}
     
+    self.IsMobile = Services.UserInputService and Services.UserInputService.TouchEnabled or false
+    self.HeaderHeight = self.IsMobile and 52 or 40
+    self.ToolbarHeight = self.IsMobile and 120 or 36
+    self.GroupItemHeight = self.IsMobile and 64 or 50
+    self.SubEntryHeight = self.IsMobile and 44 or 36
+    
     self.Minimized = false
-    self.MinWindowWidth = 400
-    self.MinWindowHeight = 300
+    self.MinWindowWidth = self.IsMobile and 320 or 400
+    self.MinWindowHeight = self.IsMobile and 260 or 300
     self.ExpandedHeight = 500
     
     self.PendingGroups = {}
@@ -1613,16 +1618,35 @@ function UI:SetMaxZIndex()
     end)
 end
 
+function UI:GetViewportSize()
+    local fallback = Vector2.new(1280, 720)
+    local camera = Services.Workspace and Services.Workspace.CurrentCamera
+    if camera then
+        return camera.ViewportSize
+    end
+    return fallback
+end
+
 function UI:BuildMain()
+    local size = self.IsMobile and UDim2.new(0.92, 0, 0.82, 0) or UDim2.new(0, 750, 0, 500)
+    local position = self.IsMobile and UDim2.new(0.5, 0, 0.5, 0) or UDim2.new(0.5, -375, 0.5, -250)
+    
     self.Main = Utils.Create("Frame", {
         Name = "Main",
-        Size = UDim2.new(0, 750, 0, 500),
-        Position = UDim2.new(0.5, -375, 0.5, -250),
+        Size = size,
+        Position = position,
+        AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Theme.Primary,
         BackgroundTransparency = Theme.Transparency,
         ClipsDescendants = true,
         Parent = self.Gui
     })
+    
+    if self.IsMobile then
+        self.ExpandedHeight = self.Main.AbsoluteSize.Y
+    else
+        self.ExpandedHeight = 500
+    end
     
     if not self.Main then return end
     Utils.Corner(self.Main, Theme.CornerMedium)
@@ -1632,9 +1656,12 @@ end
 function UI:BuildHeader()
     if not self.Main then return end
     
+    local headerHeight = self.HeaderHeight or 40
+    local btnSize = self.IsMobile and 32 or 28
+    
     local header = Utils.Create("Frame", {
         Name = "Header",
-        Size = UDim2.new(1, 0, 0, 40),
+        Size = UDim2.new(1, 0, 0, headerHeight),
         BackgroundColor3 = Theme.Secondary,
         BackgroundTransparency = 0.3,
         Parent = self.Main
@@ -1654,12 +1681,12 @@ function UI:BuildHeader()
     
     Utils.Create("TextLabel", {
         Name = "Title",
-        Size = UDim2.new(0, 150, 1, 0),
-        Position = UDim2.new(0, 14, 0, 0),
+        Size = UDim2.new(0.5, 0, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
         Text = "BLATANTSPY",
         TextColor3 = Theme.Text,
-        TextSize = 16,
+        TextSize = self.IsMobile and 18 or 16,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = header
@@ -1667,12 +1694,12 @@ function UI:BuildHeader()
     
     Utils.Create("TextLabel", {
         Name = "Executor",
-        Size = UDim2.new(0, 120, 1, 0),
-        Position = UDim2.new(0, 130, 0, 0),
+        Size = UDim2.new(0.4, 0, 1, 0),
+        Position = UDim2.new(0.5, 0, 0, 0),
         BackgroundTransparency = 1,
         Text = GetExecutorName(),
         TextColor3 = Theme.TextMuted,
-        TextSize = 12,
+        TextSize = self.IsMobile and 13 or 12,
         Font = Enum.Font.Gotham,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = header
@@ -1680,8 +1707,8 @@ function UI:BuildHeader()
     
     local btnContainer = Utils.Create("Frame", {
         Name = "Buttons",
-        Size = UDim2.new(0, 80, 0, 28),
-        Position = UDim2.new(1, -90, 0.5, -14),
+        Size = UDim2.new(0, btnSize * 2 + 8, 0, btnSize),
+        Position = UDim2.new(1, -(btnSize * 2 + 12), 0.5, -(btnSize / 2)),
         BackgroundTransparency = 1,
         Parent = header
     })
@@ -1708,13 +1735,14 @@ function UI:BuildHeader()
 end
 
 function UI:CreateHeaderButton(text, parent, callback)
+    local btnSize = self.IsMobile and 32 or 28
     local btn = Utils.Create("TextButton", {
-        Size = UDim2.new(0, 28, 0, 28),
+        Size = UDim2.new(0, btnSize, 0, btnSize),
         BackgroundColor3 = Theme.Tertiary,
         BackgroundTransparency = 0.3,
         Text = text,
         TextColor3 = Theme.Text,
-        TextSize = 14,
+        TextSize = self.IsMobile and 16 or 14,
         Font = Enum.Font.GothamBold,
         Parent = parent
     })
@@ -1723,14 +1751,6 @@ function UI:CreateHeaderButton(text, parent, callback)
     Utils.Corner(btn, Theme.CornerSmall)
     
     pcall(function()
-        btn.MouseEnter:Connect(function()
-            Utils.Tween(btn, {BackgroundTransparency = 0}, 0.1)
-        end)
-        
-        btn.MouseLeave:Connect(function()
-            Utils.Tween(btn, {BackgroundTransparency = 0.3}, 0.1)
-        end)
-        
         btn.MouseButton1Click:Connect(callback)
     end)
     
@@ -1742,28 +1762,65 @@ function UI:BuildToolbar()
     
     self.Toolbar = Utils.Create("Frame", {
         Name = "Toolbar",
-        Size = UDim2.new(1, -24, 0, 36),
-        Position = UDim2.new(0, 12, 0, 46),
+        Size = UDim2.new(1, -24, 0, self.ToolbarHeight),
+        Position = UDim2.new(0, 12, 0, self.HeaderHeight + 8),
         BackgroundTransparency = 1,
         Parent = self.Main
     })
     
     if not self.Toolbar then return end
     
+    local searchParent = self.Toolbar
+    local filterParent = self.Toolbar
+    local actionParent = self.Toolbar
+    
+    if self.IsMobile then
+        Utils.Create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            Padding = UDim.new(0, 8),
+            Parent = self.Toolbar
+        })
+        
+        searchParent = Utils.Create("Frame", {
+            Name = "SearchRow",
+            Size = UDim2.new(1, 0, 0, 38),
+            BackgroundTransparency = 1,
+            Parent = self.Toolbar
+        })
+        
+        filterParent = Utils.Create("ScrollingFrame", {
+            Name = "FilterRow",
+            Size = UDim2.new(1, 0, 0, 38),
+            BackgroundTransparency = 1,
+            ScrollBarThickness = 4,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.X,
+            ScrollingDirection = Enum.ScrollingDirection.X,
+            Parent = self.Toolbar
+        })
+        
+        actionParent = Utils.Create("Frame", {
+            Name = "ActionRow",
+            Size = UDim2.new(1, 0, 0, 38),
+            BackgroundTransparency = 1,
+            Parent = self.Toolbar
+        })
+    end
+    
     local searchBox = Utils.Create("TextBox", {
         Name = "Search",
-        Size = UDim2.new(0, 200, 0, 32),
-        Position = UDim2.new(0, 0, 0.5, -16),
+        Size = self.IsMobile and UDim2.new(1, 0, 1, 0) or UDim2.new(0, 200, 0, 32),
+        Position = self.IsMobile and UDim2.new(0, 0, 0, 0) or UDim2.new(0, 0, 0.5, -16),
         BackgroundColor3 = Theme.Tertiary,
         BackgroundTransparency = 0.5,
         Text = "",
         PlaceholderText = "Search...",
         PlaceholderColor3 = Theme.TextMuted,
         TextColor3 = Theme.Text,
-        TextSize = 14,
+        TextSize = self.IsMobile and 16 or 14,
         Font = Enum.Font.Gotham,
         ClearTextOnFocus = false,
-        Parent = self.Toolbar
+        Parent = searchParent
     })
     
     if searchBox then
@@ -1780,10 +1837,10 @@ function UI:BuildToolbar()
     
     local filterContainer = Utils.Create("Frame", {
         Name = "Filters",
-        Size = UDim2.new(0, 300, 0, 32),
-        Position = UDim2.new(0, 210, 0.5, -16),
+        Size = self.IsMobile and UDim2.new(0, 0, 1, 0) or UDim2.new(0, 300, 0, 32),
+        Position = self.IsMobile and UDim2.new(0, 0, 0, 0) or UDim2.new(0, 210, 0.5, -16),
         BackgroundTransparency = 1,
-        Parent = self.Toolbar
+        Parent = filterParent
     })
     
     if filterContainer then
@@ -1801,10 +1858,10 @@ function UI:BuildToolbar()
     
     local actionContainer = Utils.Create("Frame", {
         Name = "Actions",
-        Size = UDim2.new(0, 90, 0, 32),
-        Position = UDim2.new(1, -90, 0.5, -16),
+        Size = self.IsMobile and UDim2.new(1, 0, 1, 0) or UDim2.new(0, 90, 0, 32),
+        Position = self.IsMobile and UDim2.new(0, 0, 0, 0) or UDim2.new(1, -90, 0.5, -16),
         BackgroundTransparency = 1,
-        Parent = self.Toolbar
+        Parent = actionParent
     })
     
     if actionContainer then
@@ -1852,14 +1909,14 @@ function UI:CreateFilterButton(filterType, parent)
         BackgroundTransparency = isActive and 0.3 or 0.6,
         Text = " " .. short .. " ",
         TextColor3 = Theme.Text,
-        TextSize = 13,
+        TextSize = self.IsMobile and 15 or 13,
         Font = Enum.Font.GothamBold,
         Parent = parent
     })
     
     if not btn then return nil end
     Utils.Corner(btn, Theme.CornerSmall)
-    Utils.Padding(btn, 6)
+    Utils.Padding(btn, self.IsMobile and 10 or 6)
     
     pcall(function()
         btn.MouseButton1Click:Connect(function()
@@ -1882,13 +1939,14 @@ function UI:CreateFilterButton(filterType, parent)
 end
 
 function UI:CreateActionButton(text, parent, callback)
+    local btnSize = self.IsMobile and 40 or 32
     local btn = Utils.Create("TextButton", {
-        Size = UDim2.new(0, 32, 0, 32),
+        Size = UDim2.new(0, btnSize, 0, btnSize),
         BackgroundColor3 = Theme.Tertiary,
         BackgroundTransparency = 0.5,
         Text = text,
         TextColor3 = Theme.Text,
-        TextSize = 14,
+        TextSize = self.IsMobile and 16 or 14,
         Font = Enum.Font.GothamBold,
         Parent = parent
     })
@@ -1897,14 +1955,6 @@ function UI:CreateActionButton(text, parent, callback)
     Utils.Corner(btn, Theme.CornerSmall)
     
     pcall(function()
-        btn.MouseEnter:Connect(function()
-            Utils.Tween(btn, {BackgroundTransparency = 0.2}, 0.1)
-        end)
-        
-        btn.MouseLeave:Connect(function()
-            Utils.Tween(btn, {BackgroundTransparency = 0.5}, 0.1)
-        end)
-        
         btn.MouseButton1Click:Connect(function()
             callback(btn)
         end)
@@ -1916,10 +1966,13 @@ end
 function UI:BuildLogArea()
     if not self.Main then return end
     
+    local topOffset = self.HeaderHeight + self.ToolbarHeight + 12
+    local heightOffset = self.HeaderHeight + self.ToolbarHeight + 24
+    
     self.ContentFrame = Utils.Create("Frame", {
         Name = "LogFrame",
-        Size = UDim2.new(1, -24, 1, -100),
-        Position = UDim2.new(0, 12, 0, 88),
+        Size = UDim2.new(1, -24, 1, -heightOffset),
+        Position = UDim2.new(0, 12, 0, topOffset),
         BackgroundColor3 = Theme.Secondary,
         BackgroundTransparency = 0.6,
         ClipsDescendants = true,
@@ -1933,7 +1986,7 @@ function UI:BuildLogArea()
         Name = "LogList",
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
-        ScrollBarThickness = 4,
+        ScrollBarThickness = self.IsMobile and 10 or 4,
         ScrollBarImageColor3 = Theme.Accent,
         ScrollBarImageTransparency = 0.5,
         CanvasSize = UDim2.new(0, 0, 0, 0),
@@ -1955,10 +2008,11 @@ end
 function UI:BuildResizeHandle()
     if not self.Main then return end
     
+    local handleSize = self.IsMobile and 24 or 20
     local resizeHandle = Utils.Create("TextButton", {
         Name = "ResizeHandle",
-        Size = UDim2.new(0, 20, 0, 20),
-        Position = UDim2.new(1, -20, 1, -20),
+        Size = UDim2.new(0, handleSize, 0, handleSize),
+        Position = UDim2.new(1, -handleSize, 1, -handleSize),
         BackgroundColor3 = Theme.Accent,
         BackgroundTransparency = 0.7,
         Text = "",
@@ -2034,9 +2088,15 @@ function UI:CreateGroupItem(group)
     local entry = group.LastEntry
     if not entry then return nil end
     
+    local itemHeight = self.GroupItemHeight or 50
+    local labelHeight = self.IsMobile and 26 or 20
+    local labelTop = self.IsMobile and 10 or 5
+    local pathTop = labelTop + labelHeight + 4
+    local expandSize = self.IsMobile and 30 or 24
+    
     local item = Utils.Create("Frame", {
         Name = "Group_" .. tostring(group.Id),
-        Size = UDim2.new(1, -10, 0, 50),
+        Size = UDim2.new(1, -10, 0, itemHeight),
         BackgroundColor3 = Theme.Tertiary,
         BackgroundTransparency = 0.7,
         LayoutOrder = -entry.Id,
@@ -2061,13 +2121,13 @@ function UI:CreateGroupItem(group)
     
     local typeLabel = Utils.Create("TextLabel", {
         Name = "TypeLabel",
-        Size = UDim2.new(0, 36, 0, 20),
-        Position = UDim2.new(0, 14, 0, 5),
+        Size = UDim2.new(0, 36, 0, labelHeight),
+        Position = UDim2.new(0, 14, 0, labelTop),
         BackgroundColor3 = entry:GetColor(),
         BackgroundTransparency = 0.7,
         Text = entry:GetTypeShort(),
         TextColor3 = Theme.Text,
-        TextSize = 12,
+        TextSize = self.IsMobile and 14 or 12,
         Font = Enum.Font.GothamBold,
         Parent = item
     })
@@ -2078,13 +2138,13 @@ function UI:CreateGroupItem(group)
     
     local countLabel = Utils.Create("TextLabel", {
         Name = "CountLabel",
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(0, 54, 0, 5),
+        Size = UDim2.new(0, 40, 0, labelHeight),
+        Position = UDim2.new(0, 54, 0, labelTop),
         BackgroundColor3 = Theme.Accent,
         BackgroundTransparency = 0.5,
         Text = "x" .. tostring(group.Count),
         TextColor3 = Theme.Text,
-        TextSize = 12,
+        TextSize = self.IsMobile and 14 or 12,
         Font = Enum.Font.GothamBold,
         Parent = item
     })
@@ -2097,13 +2157,13 @@ function UI:CreateGroupItem(group)
     
     local blockedLabel = Utils.Create("TextLabel", {
         Name = "BlockedLabel",
-        Size = UDim2.new(0, 60, 0, 20),
-        Position = UDim2.new(1, -100, 0, 5),
+        Size = UDim2.new(0, 60, 0, labelHeight),
+        Position = UDim2.new(1, -100, 0, labelTop),
         BackgroundColor3 = Theme.Error,
         BackgroundTransparency = 0.3,
         Text = "BLOCKED",
         TextColor3 = Theme.Text,
-        TextSize = 10,
+        TextSize = self.IsMobile and 12 or 10,
         Font = Enum.Font.GothamBold,
         Visible = isBlocked,
         Parent = item
@@ -2115,12 +2175,12 @@ function UI:CreateGroupItem(group)
 
     Utils.Create("TextLabel", {
         Name = "NameLabel",
-        Size = UDim2.new(1, -180, 0, 20),
-        Position = UDim2.new(0, 100, 0, 5),
+        Size = UDim2.new(1, -180, 0, labelHeight),
+        Position = UDim2.new(0, 100, 0, labelTop),
         BackgroundTransparency = 1,
         Text = entry.Remote.Name,
         TextColor3 = Theme.Text,
-        TextSize = 14,
+        TextSize = self.IsMobile and 16 or 14,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
@@ -2130,11 +2190,11 @@ function UI:CreateGroupItem(group)
     Utils.Create("TextLabel", {
         Name = "PathLabel",
         Size = UDim2.new(1, -70, 0, 16),
-        Position = UDim2.new(0, 14, 0, 28),
+        Position = UDim2.new(0, 14, 0, pathTop),
         BackgroundTransparency = 1,
         Text = entry.RemotePath,
         TextColor3 = Theme.TextMuted,
-        TextSize = 11,
+        TextSize = self.IsMobile and 13 or 11,
         Font = Enum.Font.RobotoMono,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
@@ -2143,8 +2203,8 @@ function UI:CreateGroupItem(group)
     
     local expandBtn = Utils.Create("TextButton", {
         Name = "ExpandBtn",
-        Size = UDim2.new(0, 24, 0, 24),
-        Position = UDim2.new(1, -32, 0, 13),
+        Size = UDim2.new(0, expandSize, 0, expandSize),
+        Position = UDim2.new(1, -(expandSize + 8), 0.5, -(expandSize / 2)),
         BackgroundColor3 = Theme.Quaternary,
         BackgroundTransparency = 0.5,
         Text = "▼",
@@ -2161,7 +2221,7 @@ function UI:CreateGroupItem(group)
     local entriesContainer = Utils.Create("Frame", {
         Name = "EntriesContainer",
         Size = UDim2.new(1, -20, 0, 0),
-        Position = UDim2.new(0, 10, 0, 50),
+        Position = UDim2.new(0, 10, 0, itemHeight),
         BackgroundTransparency = 1,
         ClipsDescendants = true,
         Visible = false,
@@ -2178,7 +2238,7 @@ function UI:CreateGroupItem(group)
     
     local clickBtn = Utils.Create("TextButton", {
         Name = "ClickBtn",
-        Size = UDim2.new(1, -40, 0, 50),
+        Size = UDim2.new(1, -40, 0, itemHeight),
         Position = UDim2.new(0, 0, 0, 0),
         BackgroundTransparency = 1,
         Text = "",
@@ -2260,10 +2320,10 @@ function UI:UpdateGroupItem(group)
     if group.Expanded and itemData.EntriesContainer then
         self:PopulateGroupEntries(group, itemData.EntriesContainer)
         
-        local entryHeight = 36
+        local entryHeight = self.SubEntryHeight or 36
         local containerHeight = #group.Entries * (entryHeight + 2)
         Utils.SafeSet(itemData.EntriesContainer, "Size", UDim2.new(1, -20, 0, containerHeight))
-        Utils.Tween(itemData.Frame, {Size = UDim2.new(1, -10, 0, 50 + containerHeight + 10)}, 0.2)
+        Utils.Tween(itemData.Frame, {Size = UDim2.new(1, -10, 0, (self.GroupItemHeight or 50) + containerHeight + 10)}, 0.2)
     end
 end
 
@@ -2275,14 +2335,14 @@ function UI:ToggleGroupExpansion(group, item, container, expandBtn)
         Utils.SafeSet(container, "Visible", true)
         self:PopulateGroupEntries(group, container)
         
-        local entryHeight = 36
+        local entryHeight = self.SubEntryHeight or 36
         local containerHeight = #group.Entries * (entryHeight + 2)
         
         Utils.SafeSet(container, "Size", UDim2.new(1, -20, 0, containerHeight))
-        Utils.Tween(item, {Size = UDim2.new(1, -10, 0, 50 + containerHeight + 10)}, 0.2)
+        Utils.Tween(item, {Size = UDim2.new(1, -10, 0, (self.GroupItemHeight or 50) + containerHeight + 10)}, 0.2)
     else
         Utils.SafeSet(expandBtn, "Text", "▼")
-        Utils.Tween(item, {Size = UDim2.new(1, -10, 0, 50)}, 0.2)
+        Utils.Tween(item, {Size = UDim2.new(1, -10, 0, self.GroupItemHeight or 50)}, 0.2)
         ClonedFunctions.taskDelay(0.2, function()
             if not group.Expanded then
                 Utils.SafeSet(container, "Visible", false)
@@ -2319,9 +2379,10 @@ end
 function UI:CreateSubEntryItem(entry, parent, index)
     if not parent or not entry then return nil end
     
+    local subHeight = self.SubEntryHeight or 36
     local subItem = Utils.Create("Frame", {
         Name = "Entry_" .. tostring(entry.Id),
-        Size = UDim2.new(1, 0, 0, 36),
+        Size = UDim2.new(1, 0, 0, subHeight),
         BackgroundColor3 = Theme.Secondary,
         BackgroundTransparency = 0.5,
         LayoutOrder = index,
@@ -2348,7 +2409,7 @@ function UI:CreateSubEntryItem(entry, parent, index)
         BackgroundTransparency = 1,
         Text = "#" .. tostring(index),
         TextColor3 = Theme.TextDim,
-        TextSize = 11,
+        TextSize = self.IsMobile and 13 or 11,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = subItem
@@ -2360,7 +2421,7 @@ function UI:CreateSubEntryItem(entry, parent, index)
         BackgroundTransparency = 1,
         Text = tostring(#entry.Arguments) .. " args",
         TextColor3 = Theme.TextMuted,
-        TextSize = 11,
+        TextSize = self.IsMobile and 13 or 11,
         Font = Enum.Font.Gotham,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = subItem
@@ -2381,7 +2442,7 @@ function UI:CreateSubEntryItem(entry, parent, index)
         BackgroundTransparency = 1,
         Text = callerName .. (entry.RemoteType ~= "OnClientEvent" and not ClonedFunctions.stringFind(entry.RemoteType, "ActorCall_", 1, true) and (" @ line " .. tostring(entry.CallerInfo.Line or 0)) or ""),
         TextColor3 = Theme.TextDim,
-                TextSize = 10,
+        TextSize = self.IsMobile and 12 or 10,
         Font = Enum.Font.RobotoMono,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
@@ -2395,7 +2456,7 @@ function UI:CreateSubEntryItem(entry, parent, index)
             BackgroundTransparency = 1,
             Text = "B",
             TextColor3 = Theme.Error,
-            TextSize = 11,
+            TextSize = self.IsMobile and 13 or 11,
             Font = Enum.Font.GothamBold,
             Parent = subItem
         })
@@ -2454,10 +2515,14 @@ function UI:OpenDetailWindow(entry)
         end)
     end
     
+    local headerHeight = self.IsMobile and 46 or 36
+    local closeSize = self.IsMobile and 32 or 28
+    
     local window = Utils.Create("Frame", {
         Name = windowId,
-        Size = UDim2.new(0, 600, 0, 500),
-        Position = UDim2.new(0.5, -300, 0.5, -250),
+        Size = self.IsMobile and UDim2.new(0.94, 0, 0.9, 0) or UDim2.new(0, 600, 0, 500),
+        Position = self.IsMobile and UDim2.new(0.5, 0, 0.5, 0) or UDim2.new(0.5, -300, 0.5, -250),
+        AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Theme.Primary,
         BackgroundTransparency = Theme.Transparency,
         Parent = self.Gui
@@ -2470,7 +2535,7 @@ function UI:OpenDetailWindow(entry)
     self.SubWindows[windowId] = window
     
     local header = Utils.Create("Frame", {
-        Size = UDim2.new(1, 0, 0, 36),
+        Size = UDim2.new(1, 0, 0, headerHeight),
         BackgroundColor3 = entry:GetColor(),
         BackgroundTransparency = 0.7,
         Parent = window
@@ -2494,15 +2559,15 @@ function UI:OpenDetailWindow(entry)
             BackgroundTransparency = 1,
             Text = entry:GetTypeShort() .. " | " .. tostring(entry.Remote.Name) .. " | ID: " .. tostring(entry.Id),
             TextColor3 = Theme.Text,
-            TextSize = 15,
+            TextSize = self.IsMobile and 16 or 15,
             Font = Enum.Font.GothamBold,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = header
         })
         
         local closeBtn = Utils.Create("TextButton", {
-            Size = UDim2.new(0, 28, 0, 28),
-            Position = UDim2.new(1, -36, 0.5, -14),
+            Size = UDim2.new(0, closeSize, 0, closeSize),
+            Position = UDim2.new(1, -(closeSize + 8), 0.5, -(closeSize / 2)),
             BackgroundColor3 = Theme.Error,
             BackgroundTransparency = 0.3,
             Text = "X",
@@ -2525,12 +2590,23 @@ function UI:OpenDetailWindow(entry)
         self:SetupWindowDrag(window, header)
     end
     
-    local btnFrame = Utils.Create("Frame", {
-        Size = UDim2.new(1, -24, 0, 32),
-        Position = UDim2.new(0, 12, 0, 42),
+    local btnFrameProps = {
+        Size = UDim2.new(1, -24, 0, self.IsMobile and 72 or 32),
+        Position = UDim2.new(0, 12, 0, headerHeight + 6),
         BackgroundTransparency = 1,
         Parent = window
-    })
+    }
+    
+    if self.IsMobile then
+        btnFrameProps.ScrollBarThickness = 4
+        btnFrameProps.ScrollBarImageColor3 = Theme.Accent
+        btnFrameProps.ScrollBarImageTransparency = 0.4
+        btnFrameProps.CanvasSize = UDim2.new(0, 0, 0, 0)
+        btnFrameProps.AutomaticCanvasSize = Enum.AutomaticSize.X
+        btnFrameProps.ScrollingDirection = Enum.ScrollingDirection.X
+    end
+    
+    local btnFrame = Utils.Create(self.IsMobile and "ScrollingFrame" or "Frame", btnFrameProps)
     
     if btnFrame then
         Utils.Create("UIListLayout", {
@@ -2540,17 +2616,25 @@ function UI:OpenDetailWindow(entry)
         })
         
         self:CreateDetailButton("COPY SCRIPT", btnFrame, function()
-            pcall(function()
-                setclipboard(entry:GetScript())
-            end)
-            self:ShowNotification("Script copied", Theme.Success)
+            if setclipboard then
+                pcall(function()
+                    setclipboard(entry:GetScript())
+                end)
+                self:ShowNotification("Script copied", Theme.Success)
+            else
+                self:ShowNotification("Clipboard not available", Theme.Warning)
+            end
         end)
         
         self:CreateDetailButton("COPY INFO", btnFrame, function()
-            pcall(function()
-                setclipboard(entry:GetDetailedInfoPlain())
-            end)
-            self:ShowNotification("Info copied", Theme.Success)
+            if setclipboard then
+                pcall(function()
+                    setclipboard(entry:GetDetailedInfoPlain())
+                end)
+                self:ShowNotification("Info copied", Theme.Success)
+            else
+                self:ShowNotification("Clipboard not available", Theme.Warning)
+            end
         end)
         
         if entry:CanDecompile() then
@@ -2624,9 +2708,10 @@ function UI:OpenDetailWindow(entry)
         end
     end
     
+    local contentTop = headerHeight + (self.IsMobile and 86 or 48)
     local contentFrame = Utils.Create("Frame", {
-        Size = UDim2.new(1, -24, 1, -90),
-        Position = UDim2.new(0, 12, 0, 80),
+        Size = UDim2.new(1, -24, 1, -(contentTop + 10)),
+        Position = UDim2.new(0, 12, 0, contentTop),
         BackgroundColor3 = Theme.Secondary,
         BackgroundTransparency = 0.5,
         ClipsDescendants = true,
@@ -2639,7 +2724,7 @@ function UI:OpenDetailWindow(entry)
         local contentScroll = Utils.Create("ScrollingFrame", {
             Size = UDim2.new(1,0, 1, 0),
             BackgroundTransparency = 1,
-            ScrollBarThickness = 5,
+            ScrollBarThickness = self.IsMobile and 8 or 5,
             ScrollBarImageColor3 = Theme.Accent,
             ScrollBarImageTransparency = 0.3,
             CanvasSize = UDim2.new(0, 0, 0, 0),
@@ -2656,7 +2741,7 @@ function UI:OpenDetailWindow(entry)
             detailLabel.AutomaticSize = Enum.AutomaticSize.Y
             detailLabel.BackgroundTransparency = 1
             detailLabel.TextColor3 = Theme.Text
-            detailLabel.TextSize = 13
+            detailLabel.TextSize = self.IsMobile and 14 or 13
             detailLabel.Font = Enum.Font.RobotoMono
             detailLabel.TextXAlignment = Enum.TextXAlignment.Left
             detailLabel.TextYAlignment = Enum.TextYAlignment.Top
@@ -2669,8 +2754,10 @@ function UI:OpenDetailWindow(entry)
     
     self:SetupSubWindowResize(window)
     
-    Utils.SafeSet(window, "Size", UDim2.new(0, 600, 0, 0))
-    Utils.Tween(window, {Size = UDim2.new(0, 600, 0, 500)}, 0.25, Enum.EasingStyle.Back)
+    if not self.IsMobile then
+        Utils.SafeSet(window, "Size", UDim2.new(0, 600, 0, 0))
+        Utils.Tween(window, {Size = UDim2.new(0, 600, 0, 500)}, 0.25, Enum.EasingStyle.Back)
+    end
 end
 
 function UI:OpenDecompileWindow(entry)
@@ -2694,10 +2781,14 @@ function UI:OpenDecompileWindow(entry)
         end)
     end
     
+    local headerHeight = self.IsMobile and 46 or 36
+    local closeSize = self.IsMobile and 32 or 28
+    
     local window = Utils.Create("Frame", {
         Name = windowId,
-        Size = UDim2.new(0, 700, 0, 550),
-        Position = UDim2.new(0.5, -350, 0.5, -275),
+        Size = self.IsMobile and UDim2.new(0.96, 0, 0.92, 0) or UDim2.new(0, 700, 0, 550),
+        Position = self.IsMobile and UDim2.new(0.5, 0, 0.5, 0) or UDim2.new(0.5, -350, 0.5, -275),
+        AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Theme.Primary,
         BackgroundTransparency = Theme.Transparency,
         Parent = self.Gui
@@ -2710,7 +2801,7 @@ function UI:OpenDecompileWindow(entry)
     self.SubWindows[windowId] = window
     
     local header = Utils.Create("Frame", {
-        Size = UDim2.new(1, 0, 0, 36),
+        Size = UDim2.new(1, 0, 0, headerHeight),
         BackgroundColor3 = Theme.Accent,
         BackgroundTransparency = 0.7,
         Parent = window
@@ -2739,15 +2830,15 @@ function UI:OpenDecompileWindow(entry)
             BackgroundTransparency = 1,
             Text = titleText,
             TextColor3 = Theme.Text,
-            TextSize = 15,
+            TextSize = self.IsMobile and 16 or 15,
             Font = Enum.Font.GothamBold,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = header
         })
         
         local closeBtn = Utils.Create("TextButton", {
-            Size = UDim2.new(0, 28, 0, 28),
-            Position = UDim2.new(1, -36, 0.5, -14),
+            Size = UDim2.new(0, closeSize, 0, closeSize),
+            Position = UDim2.new(1, -(closeSize + 8), 0.5, -(closeSize / 2)),
             BackgroundColor3 = Theme.Error,
             BackgroundTransparency = 0.3,
             Text = "X",
@@ -2773,13 +2864,13 @@ function UI:OpenDecompileWindow(entry)
     local decompiled = self.Decompiler:Process(scriptToDecompile)
     
     local copyBtn = Utils.Create("TextButton", {
-        Size = UDim2.new(0, 90, 0, 28),
-        Position = UDim2.new(0, 12, 0, 42),
+        Size = UDim2.new(0, 110, 0, self.IsMobile and 34 or 28),
+        Position = UDim2.new(0, 12, 0, headerHeight + 6),
         BackgroundColor3 = Theme.Accent,
         BackgroundTransparency = 0.3,
         Text = "COPY",
         TextColor3 = Theme.Text,
-        TextSize = 13,
+        TextSize = self.IsMobile and 14 or 13,
         Font = Enum.Font.GothamBold,
         Parent = window
     })
@@ -2788,17 +2879,22 @@ function UI:OpenDecompileWindow(entry)
         Utils.Corner(copyBtn, Theme.CornerSmall)
         pcall(function()
             copyBtn.MouseButton1Click:Connect(function()
-                pcall(function()
-                    setclipboard(decompiled)
-                end)
-                self:ShowNotification("Decompiled script copied", Theme.Success)
+                if setclipboard then
+                    pcall(function()
+                        setclipboard(decompiled)
+                    end)
+                    self:ShowNotification("Decompiled script copied", Theme.Success)
+                else
+                    self:ShowNotification("Clipboard not available", Theme.Warning)
+                end
             end)
         end)
     end
     
+    local contentTop = headerHeight + (self.IsMobile and 52 or 40)
     local contentFrame = Utils.Create("Frame", {
-        Size = UDim2.new(1, -24, 1, -90),
-        Position = UDim2.new(0, 12, 0, 76),
+        Size = UDim2.new(1, -24, 1, -(contentTop + 10)),
+        Position = UDim2.new(0, 12, 0, contentTop),
         BackgroundColor3 = Theme.Secondary,
         BackgroundTransparency = 0.5,
         ClipsDescendants = true,
@@ -2811,7 +2907,7 @@ function UI:OpenDecompileWindow(entry)
         local contentScroll = Utils.Create("ScrollingFrame", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
-            ScrollBarThickness = 6,
+            ScrollBarThickness = self.IsMobile and 8 or 6,
             ScrollBarImageColor3 = Theme.Accent,
             ScrollBarImageTransparency = 0.3,
             CanvasSize = UDim2.new(0, 0, 0, 0),
@@ -2861,7 +2957,7 @@ function UI:OpenDecompileWindow(entry)
                         BackgroundTransparency = 1,
                         Text = numStr,
                         TextColor3 = Theme.TextMuted,
-                        TextSize = 13,
+                        TextSize = self.IsMobile and 14 or 13,
                         Font = Enum.Font.RobotoMono,
                         TextXAlignment = Enum.TextXAlignment.Right,
                         TextYAlignment = Enum.TextYAlignment.Top,
@@ -2877,7 +2973,7 @@ function UI:OpenDecompileWindow(entry)
                         Text = highlightedStr,
                         RichText = true,
                         TextColor3 = Theme.Text,
-                        TextSize = 13,
+                        TextSize = self.IsMobile and 14 or 13,
                         Font = Enum.Font.RobotoMono,
                         TextXAlignment = Enum.TextXAlignment.Left,
                         TextYAlignment = Enum.TextYAlignment.Top,
@@ -2891,17 +2987,24 @@ function UI:OpenDecompileWindow(entry)
     
     self:SetupSubWindowResize(window)
     
-    Utils.SafeSet(window, "Size", UDim2.new(0, 700, 0, 0))
-    Utils.Tween(window, {Size = UDim2.new(0, 700, 0, 550)}, 0.25, Enum.EasingStyle.Back)
+    if not self.IsMobile then
+        Utils.SafeSet(window, "Size", UDim2.new(0, 700, 0, 0))
+        Utils.Tween(window, {Size = UDim2.new(0, 700, 0, 550)}, 0.25, Enum.EasingStyle.Back)
+    end
 end
 
 function UI:SetupSubWindowResize(window)
     if not window then return end
     
+    if self.IsMobile then
+        return
+    end
+    
+    local handleSize = self.IsMobile and 22 or 18
     local resizeHandle = Utils.Create("TextButton", {
         Name = "ResizeHandle",
-        Size = UDim2.new(0, 18, 0, 18),
-        Position = UDim2.new(1, -18, 1, -18),
+        Size = UDim2.new(0, handleSize, 0, handleSize),
+        Position = UDim2.new(1, -handleSize, 1, -handleSize),
         BackgroundColor3 = Theme.Accent,
         BackgroundTransparency = 0.7,
         Text = "",
@@ -2952,8 +3055,8 @@ function UI:SetupSubWindowResize(window)
             if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or 
                input.UserInputType == Enum.UserInputType.Touch) then
                 local delta = input.Position - startPos
-                local newWidth = ClonedFunctions.mathMax(300, startSize.X.Offset + delta.X)
-                local newHeight = ClonedFunctions.mathMax(200, startSize.Y.Offset + delta.Y)
+                local newWidth = ClonedFunctions.mathMax(self.IsMobile and 280 or 300, startSize.X.Offset + delta.X)
+                local newHeight = ClonedFunctions.mathMax(self.IsMobile and 240 or 200, startSize.Y.Offset + delta.Y)
                 Utils.SafeSet(window, "Size", UDim2.new(0, newWidth, 0, newHeight))
             end
         end)
@@ -2981,14 +3084,14 @@ function UI:CreateDetailButton(text, parent, callback)
         BackgroundTransparency = 0.4,
         Text = text,
         TextColor3 = Theme.Text,
-        TextSize = 13,
+        TextSize = self.IsMobile and 14 or 13,
         Font = Enum.Font.GothamBold,
         Parent = parent
     })
     
     if not btn then return nil end
     Utils.Corner(btn, Theme.CornerSmall)
-    Utils.Padding(btn, 10)
+    Utils.Padding(btn, self.IsMobile and 12 or 10)
     
     pcall(function()
         btn.MouseEnter:Connect(function()
