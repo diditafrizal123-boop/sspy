@@ -81,6 +81,12 @@ local Globals = getgenv()
 
 local AdonisBypassed = false
 local ActorInterceptionEnabled = false
+local Config = {
+    ExternalDecompilerEnabled = true,
+    MobileScale = 1.05,
+    MobileFramePadding = 6,
+    MobileScrollBar = 10
+}
 
 local CacheAPI = {}
 
@@ -1465,6 +1471,41 @@ function Decompiler.new()
     return setmetatable({}, Decompiler)
 end
 
+function Decompiler:TryExternal(scriptInstance)
+    if not Config.ExternalDecompilerEnabled then
+        return nil, nil
+    end
+
+    if type(getgenv().BlatantSpyExternalDecompiler) == "function" then
+        local success, result = pcall(getgenv().BlatantSpyExternalDecompiler, scriptInstance)
+        if success and type(result) == "string" then
+            return result, "External"
+        end
+    end
+
+    if getscriptbytecode then
+        local success, bytecode = pcall(getscriptbytecode, scriptInstance)
+        if success and bytecode then
+            if type(getgenv().unluau_decompile) == "function" then
+                local decompSuccess, decompResult = pcall(getgenv().unluau_decompile, bytecode)
+                if decompSuccess and type(decompResult) == "string" then
+                    return decompResult, "Unluau"
+                end
+            end
+
+            local unluau = getgenv().unluau
+            if type(unluau) == "table" and type(unluau.decompile) == "function" then
+                local decompSuccess, decompResult = pcall(unluau.decompile, bytecode)
+                if decompSuccess and type(decompResult) == "string" then
+                    return decompResult, "Unluau"
+                end
+            end
+        end
+    end
+
+    return nil, nil
+end
+
 function Decompiler:Process(scriptInstance)
     if not scriptInstance then
         return "No script instance provided"
@@ -1476,8 +1517,13 @@ function Decompiler:Process(scriptInstance)
     if decompile then
         local success, source = pcall(decompile, scriptInstance)
         if success and source then
-            return result .. source
+            return result .. "-- Decompiler: Native\n\n" .. source
         end
+    end
+
+    local externalSource, externalName = self:TryExternal(scriptInstance)
+    if externalSource then
+        return result .. "-- Decompiler: " .. externalName .. "\n\n" .. externalSource
     end
     
     if getscriptbytecode then
@@ -1486,7 +1532,7 @@ function Decompiler:Process(scriptInstance)
             if disassemble then
                 local disSuccess, disResult = pcall(disassemble, bytecode)
                 if disSuccess then
-                    return result .. "-- Disassembled bytecode:\n\n" .. disResult
+                    return result .. "-- Decompiler: Disassemble\n\n-- Disassembled bytecode:\n\n" .. disResult
                 end
             end
             return result .. "-- Bytecode retrieved but decompilation unavailable"
@@ -1517,14 +1563,14 @@ function UI.new(logger, blockList, decompiler)
     self.SubWindows = {}
     
     self.IsMobile = Services.UserInputService and Services.UserInputService.TouchEnabled or false
-    self.HeaderHeight = self.IsMobile and 48 or 40
-    self.ToolbarHeight = self.IsMobile and 110 or 36
-    self.GroupItemHeight = self.IsMobile and 60 or 50
-    self.SubEntryHeight = self.IsMobile and 42 or 36
+    self.HeaderHeight = self.IsMobile and 52 or 40
+    self.ToolbarHeight = self.IsMobile and 130 or 36
+    self.GroupItemHeight = self.IsMobile and 70 or 50
+    self.SubEntryHeight = self.IsMobile and 46 or 36
     
     self.Minimized = false
-    self.MinWindowWidth = self.IsMobile and 320 or 400
-    self.MinWindowHeight = self.IsMobile and 260 or 300
+    self.MinWindowWidth = self.IsMobile and 340 or 400
+    self.MinWindowHeight = self.IsMobile and 320 or 300
     self.ExpandedHeight = 500
     
     self.PendingGroups = {}
@@ -1627,6 +1673,31 @@ function UI:GetViewportSize()
     return fallback
 end
 
+function UI:ApplyMobileScale(frame)
+    if not frame or not self.IsMobile then
+        return
+    end
+
+    Utils.Create("UIScale", {
+        Scale = Config.MobileScale or 1,
+        Parent = frame
+    })
+end
+
+function UI:ApplyMobilePadding(frame)
+    if not frame or not self.IsMobile then
+        return
+    end
+
+    Utils.Create("UIPadding", {
+        PaddingTop = UDim.new(0, Config.MobileFramePadding or 0),
+        PaddingBottom = UDim.new(0, Config.MobileFramePadding or 0),
+        PaddingLeft = UDim.new(0, Config.MobileFramePadding or 0),
+        PaddingRight = UDim.new(0, Config.MobileFramePadding or 0),
+        Parent = frame
+    })
+end
+
 function UI:BuildMain()
     local viewport = self:GetViewportSize()
     local maxWidth = ClonedFunctions.mathMax(self.MinWindowWidth, viewport.X - (self.IsMobile and 20 or 80))
@@ -1649,13 +1720,15 @@ function UI:BuildMain()
     if not self.Main then return end
     Utils.Corner(self.Main, Theme.CornerMedium)
     Utils.Stroke(self.Main, Theme.Accent, 1, 0.8)
+    self:ApplyMobileScale(self.Main)
+    self:ApplyMobilePadding(self.Main)
 end
 
 function UI:BuildHeader()
     if not self.Main then return end
     
     local headerHeight = self.HeaderHeight or 40
-    local btnSize = self.IsMobile and 32 or 28
+    local btnSize = self.IsMobile and 36 or 28
     
     local header = Utils.Create("Frame", {
         Name = "Header",
@@ -1733,7 +1806,7 @@ function UI:BuildHeader()
 end
 
 function UI:CreateHeaderButton(text, parent, callback)
-    local btnSize = self.IsMobile and 32 or 28
+    local btnSize = self.IsMobile and 36 or 28
     local btn = Utils.Create("TextButton", {
         Size = UDim2.new(0, btnSize, 0, btnSize),
         BackgroundColor3 = Theme.Tertiary,
@@ -1789,21 +1862,21 @@ function UI:BuildToolbar()
         
         searchParent = Utils.Create("Frame", {
             Name = "SearchRow",
-            Size = UDim2.new(1, 0, 0, 36),
+            Size = UDim2.new(1, 0, 0, 40),
             BackgroundTransparency = 1,
             Parent = self.Toolbar
         })
         
         filterParent = Utils.Create("Frame", {
             Name = "FilterRow",
-            Size = UDim2.new(1, 0, 0, 36),
+            Size = UDim2.new(1, 0, 0, 40),
             BackgroundTransparency = 1,
             Parent = self.Toolbar
         })
         
         actionParent = Utils.Create("Frame", {
             Name = "ActionRow",
-            Size = UDim2.new(1, 0, 0, 36),
+            Size = UDim2.new(1, 0, 0, 40),
             BackgroundTransparency = 1,
             Parent = self.Toolbar
         })
@@ -1819,7 +1892,7 @@ function UI:BuildToolbar()
         PlaceholderText = "Search...",
         PlaceholderColor3 = Theme.TextMuted,
         TextColor3 = Theme.Text,
-        TextSize = 14,
+        TextSize = self.IsMobile and 16 or 14,
         Font = Enum.Font.Gotham,
         ClearTextOnFocus = false,
         Parent = searchParent
@@ -1848,8 +1921,8 @@ function UI:BuildToolbar()
     if filterContainer then
         if self.IsMobile then
             Utils.Create("UIGridLayout", {
-                CellSize = UDim2.new(0, 70, 0, 32),
-                CellPadding = UDim2.new(0, 6, 0, 6),
+                CellSize = UDim2.new(0, 78, 0, 36),
+                CellPadding = UDim2.new(0, 8, 0, 8),
                 FillDirection = Enum.FillDirection.Horizontal,
                 HorizontalAlignment = Enum.HorizontalAlignment.Left,
                 VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -1952,14 +2025,14 @@ function UI:CreateFilterButton(filterType, parent)
 end
 
 function UI:CreateActionButton(text, parent, callback)
-    local btnSize = self.IsMobile and 36 or 32
+    local btnSize = self.IsMobile and 40 or 32
     local btn = Utils.Create("TextButton", {
         Size = UDim2.new(0, btnSize, 0, btnSize),
         BackgroundColor3 = Theme.Tertiary,
         BackgroundTransparency = 0.5,
         Text = text,
         TextColor3 = Theme.Text,
-        TextSize = self.IsMobile and 15 or 14,
+        TextSize = self.IsMobile and 16 or 14,
         Font = Enum.Font.GothamBold,
         Parent = parent
     })
@@ -2007,7 +2080,7 @@ function UI:BuildLogArea()
         Name = "LogList",
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
-        ScrollBarThickness = self.IsMobile and 8 or 4,
+        ScrollBarThickness = self.IsMobile and (Config.MobileScrollBar or 10) or 4,
         ScrollBarImageColor3 = Theme.Accent,
         ScrollBarImageTransparency = 0.5,
         CanvasSize = UDim2.new(0, 0, 0, 0),
@@ -2539,8 +2612,8 @@ function UI:OpenDetailWindow(entry)
     local viewport = self:GetViewportSize()
     local windowWidth = self.IsMobile and ClonedFunctions.mathMax(320, viewport.X - 20) or ClonedFunctions.mathMin(600, viewport.X - 80)
     local windowHeight = self.IsMobile and ClonedFunctions.mathMax(320, viewport.Y - 40) or ClonedFunctions.mathMin(500, viewport.Y - 120)
-    local headerHeight = self.IsMobile and 44 or 36
-    local closeSize = self.IsMobile and 32 or 28
+    local headerHeight = self.IsMobile and 46 or 36
+    local closeSize = self.IsMobile and 34 or 28
     
     local window = Utils.Create("Frame", {
         Name = windowId,
@@ -2554,6 +2627,8 @@ function UI:OpenDetailWindow(entry)
     if not window then return end
     Utils.Corner(window, Theme.CornerMedium)
     Utils.Stroke(window, entry:GetColor(), 1, 0.6)
+    self:ApplyMobileScale(window)
+    self:ApplyMobilePadding(window)
     
     self.SubWindows[windowId] = window
     
@@ -2747,7 +2822,7 @@ function UI:OpenDetailWindow(entry)
         local contentScroll = Utils.Create("ScrollingFrame", {
             Size = UDim2.new(1,0, 1, 0),
             BackgroundTransparency = 1,
-            ScrollBarThickness = self.IsMobile and 8 or 5,
+            ScrollBarThickness = self.IsMobile and (Config.MobileScrollBar or 10) or 5,
             ScrollBarImageColor3 = Theme.Accent,
             ScrollBarImageTransparency = 0.3,
             CanvasSize = UDim2.new(0, 0, 0, 0),
@@ -2805,8 +2880,8 @@ function UI:OpenDecompileWindow(entry)
     local viewport = self:GetViewportSize()
     local windowWidth = self.IsMobile and ClonedFunctions.mathMax(320, viewport.X - 20) or ClonedFunctions.mathMin(700, viewport.X - 80)
     local windowHeight = self.IsMobile and ClonedFunctions.mathMax(320, viewport.Y - 40) or ClonedFunctions.mathMin(550, viewport.Y - 120)
-    local headerHeight = self.IsMobile and 44 or 36
-    local closeSize = self.IsMobile and 32 or 28
+    local headerHeight = self.IsMobile and 46 or 36
+    local closeSize = self.IsMobile and 34 or 28
     
     local window = Utils.Create("Frame", {
         Name = windowId,
@@ -2820,6 +2895,8 @@ function UI:OpenDecompileWindow(entry)
     if not window then return end
     Utils.Corner(window, Theme.CornerMedium)
     Utils.Stroke(window, Theme.Accent, 1, 0.6)
+    self:ApplyMobileScale(window)
+    self:ApplyMobilePadding(window)
     
     self.SubWindows[windowId] = window
     
@@ -2930,7 +3007,7 @@ function UI:OpenDecompileWindow(entry)
         local contentScroll = Utils.Create("ScrollingFrame", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
-            ScrollBarThickness = self.IsMobile and 8 or 6,
+            ScrollBarThickness = self.IsMobile and (Config.MobileScrollBar or 10) or 6,
             ScrollBarImageColor3 = Theme.Accent,
             ScrollBarImageTransparency = 0.3,
             CanvasSize = UDim2.new(0, 0, 0, 0),
@@ -3017,7 +3094,7 @@ end
 function UI:SetupSubWindowResize(window)
     if not window then return end
     
-    local handleSize = self.IsMobile and 22 or 18
+    local handleSize = self.IsMobile and 24 or 18
     local resizeHandle = Utils.Create("TextButton", {
         Name = "ResizeHandle",
         Size = UDim2.new(0, handleSize, 0, handleSize),
